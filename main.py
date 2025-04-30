@@ -1,160 +1,109 @@
-import os
-import re
-import json
-from typing import Optional
+import os, re, json
+from typing import Optional, List, Dict
 
 from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import fitz               # PyMuPDF
-import docx2txt
-import openai
+import fitz, docx2txt, openai
 
-# ───────────────────
-#  FastAPI + CORS
-# ───────────────────
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+AUTH   = os.getenv("BASIC_AUTH_TOKEN", "")
+
 app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://rezmay.co"],  # ← adjust if needed
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["https://rezmay.co"],
+    allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
 )
 
-# ───────────────────
-#  OpenAI
-# ───────────────────
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-AUTH   = os.getenv("BASIC_AUTH_TOKEN", "")   # optional bearer
-
-# ───────────────────
-#  Helpers
-# ───────────────────
-def extract_text_from_file(fname: str, content: bytes) -> str:
+# ────────── file helpers ──────────
+def extract_text_from_file(fname: str, blob: bytes) -> str:
     ext = fname.lower().split(".")[-1]
+    tmp = f"/tmp/temp.{ext}"
+    open(tmp, "wb").write(blob)
     if ext == "pdf":
-        tmp = "/tmp/temp.pdf"
-        open(tmp, "wb").write(content)
-        doc = fitz.open(tmp)
-        return "\n".join(pg.get_text() for pg in doc)
-    elif ext == "docx":
-        tmp = "/tmp/temp.docx"
-        open(tmp, "wb").write(content)
+        return "\n".join(pg.get_text() for pg in fitz.open(tmp))
+    if ext == "docx":
         return docx2txt.process(tmp)
     raise ValueError("Unsupported file type")
 
-def extract_name(text: str) -> str:
-    first_line = text.strip().split("\n", 1)[0]
-    return first_line.strip()
+# ────────── quick regex fields ──────────
+def extract_name(t):  return t.split("\n",1)[0].strip()
+def extract_email(t): m=re.search(r'[\w\.-]+@[\w\.-]+\.\w+',t);return m.group(0) if m else""
+def extract_phone(t): m=re.search(r'(\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}',t);return m.group(0) if m else""
 
-def extract_email(text: str) -> str:
-    m = re.search(r'[\w\.-]+@[\w\.-]+\.[\w]+', text)
-    return m.group(0) if m else ""
+# ────────── EXPERIENCE via GPT (with bullets) ──────────
+def extract_experience_sections(resume_text:str)->List[Dict]:
+    prompt=f"""
+You are an ATS parser. Extract ONLY what is explicitly in the text.
+Return JSON list like:
 
-def extract_phone(text: str) -> str:
-    m = re.search(r'(\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}', text)
-    return m.group(0) if m else ""
+[
+ {{"title":"","company":"","location":"","years":"","bullets":["• ...","• ..."]}},
+ ...
+]
 
-# ───────────────────
-#  AI-assisted EXPERIENCE
-# ───────────────────
-def extract_experience_sections(resume_text: str) -> list:
-    prompt = f"""
-You are an ATS résumé parser. Extract ONLY what is explicitly present.
-Return JSON list:
-
-[{{"title":"","company":"","location":"","years":""}}, …]
-
-Résumé:
-\"\"\"{resume_text}\"\"\"
-JSON only:
-"""
+Text:
+\"\"\"{resume_text}\"\"\""""
     try:
-        rsp = client.chat.completions.create(
+        rsp=client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{{"role":"user","content":prompt}}],
             temperature=0
         )
         return json.loads(rsp.choices[0].message.content)
     except Exception as e:
-        print("AI exp parsing failed:", e)
-        return []
+        print("AI exp error:",e);return[]
 
-# ───────────────────
-#  Education  (improved / tolerant)
-# ───────────────────
-def extract_education(text: str) -> list:
-    lines = [l.strip() for l in text.split("\n")]
-    out, capture, buf = [], False, []
+# ────────── EDUCATION regex pass ──────────
+deg_kw=re.compile(r'\b(Bachelor|Master|Associate|BS|BA|MS|MBA|MA|PhD|Doctor|Certificate)\b',re.I)
+def extract_education(txt:str)->List[Dict]:
+    lines=[l.strip() for l in txt.split("\n")]
+    capture=False; out=[]
+    for i,l in enumerate(lines):
+        if not capture and "education" in l.lower():
+            capture=True;continue
+        if capture and re.match(r'^\s*(experience|skills|summary|core)\b',l,re.I):
+            break
+        if capture and l:
+            m=deg_kw.search(l)
+            if m:
+                degree_type=m.group(0)
+                rest=l[m.end():].strip(" ,-")
+                school=lines[i-1].strip()
+                # cleanup stray words
+                school=re.sub(r'\bEducation\b','',school,flags=re.I).strip()
+                field=rest
+                out.append({ "school":school, "degree_type":degree_type, "field":field })
+    # dedupe
+    dedup=[]
+    for e in out:
+        if e not in dedup: dedup.append(e)
+    return dedup
 
-    deg_kw = re.compile(
-        r'\b(Bachelor|Master|Associate|BS|BA|MS|MBA|MA|PhD|Doctor|Certificate)\b',
-        re.I
-    )
+def extract_skills(t:str)->List[str]:
+    common=["Python","JavaScript","Marketing","Leadership","Design","Copywriting","UX","Analytics","SEO","Content"]
+    return sorted({s for s in common if s.lower() in t.lower()})
 
-    for line in lines:
-        if not capture and "education" in line.lower():
-            capture = True
-            continue
+def jd_similarity(r,j):
+    v=TfidfVectorizer(stop_words="english").fit_transform([r,j])
+    return cosine_similarity(v[0:1],v[1:2])[0][0]
 
-        if capture:
-            if re.match(r'^\s*(experience|skills|summary|core)\b', line, re.I):
-                break
-            if line:
-                buf.append(line)
-
-            if not line or len(buf) >= 4:
-                joined = " ".join(buf)
-                m = deg_kw.search(joined)
-                if m:
-                    degree = joined[m.start():].split(",")[0].strip()
-                    school = joined[:m.start()].strip()
-                    field  = joined[m.end():].strip(" ,-")
-                    out.append({
-                        "school": school,
-                        "degree_type": degree,
-                        "field": field
-                    })
-                buf = []
-    return out
-
-def extract_skills(text: str) -> list:
-    common = ["Python","JavaScript","Marketing","Leadership",
-              "Design","Copywriting","UX","Analytics","SEO","Content"]
-    return sorted({s for s in common if s.lower() in text.lower()})
-
-def compare_with_job_description(resume_text: str, jd_text: str) -> float:
-    vec = TfidfVectorizer(stop_words="english").fit_transform([resume_text, jd_text])
-    return cosine_similarity(vec[0:1], vec[1:2])[0][0]
-
-# ───────────────────
-#  FastAPI endpoint
-# ───────────────────
+# ────────── API ──────────
 @app.post("/parse")
 async def parse(
-    file: UploadFile = File(...),
-    job_description: Optional[str] = Form(None),
-    authorization: Optional[str] = Header(None)
+    file:UploadFile=File(...),
+    job_description:Optional[str]=Form(None),
+    authorization:Optional[str]=Header(None)
 ):
-    if AUTH and authorization != f"Bearer {AUTH}":
-        raise HTTPException(401, "Unauthorized")
+    if AUTH and authorization!=f"Bearer {AUTH}": raise HTTPException(401,"Unauthorized")
+    txt=extract_text_from_file(file.filename,await file.read())
 
-    content = await file.read()
-    resume_text = extract_text_from_file(file.filename, content)
+    data={{"name":extract_name(txt),"email":extract_email(txt),"phone":extract_phone(txt),
+           "experience":extract_experience_sections(txt),
+           "education":extract_education(txt),
+           "skills":extract_skills(txt)}}
 
-    data = {
-        "name": extract_name(resume_text),
-        "email": extract_email(resume_text),
-        "phone": extract_phone(resume_text),
-        "experience": extract_experience_sections(resume_text),
-        "education": extract_education(resume_text),
-        "skills": extract_skills(resume_text)
-    }
-
-    if job_description:
-        data["match_score"] = round(compare_with_job_description(resume_text, job_description)*100, 2)
-
+    if job_description: data["match_score"]=round(jd_similarity(txt,job_description)*100,2)
     return data
