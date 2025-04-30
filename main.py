@@ -25,7 +25,6 @@ app.add_middleware(
 
 AUTH = os.getenv("BASIC_AUTH_TOKEN", "")
 
-
 def extract_text_from_file(filename: str, content: bytes) -> str:
     ext = filename.lower().split('.')[-1]
     if ext == 'pdf':
@@ -40,24 +39,20 @@ def extract_text_from_file(filename: str, content: bytes) -> str:
     else:
         raise ValueError("Unsupported file type")
 
-
 def extract_name(text: str) -> str:
     lines = text.strip().split("\n")
     return lines[0].strip() if lines else ""
-
 
 def extract_email(text: str) -> str:
     match = re.search(r'[\w\.-]+@[\w\.-]+', text)
     return match.group(0) if match else ""
 
-
 def extract_phone(text: str) -> str:
     match = re.search(r'(\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}', text)
     return match.group(0) if match else ""
 
-
 def extract_experience_sections(resume_text: str) -> list:
-    print("🔁 Running extract_experience_sections")
+    print("\U0001f501 Running extract_experience_sections")
 
     prompt = f"""
 You are a resume parser. Extract ONLY what is explicitly stated in the following resume text.
@@ -79,25 +74,25 @@ Return a list of experience entries in strict JSON format with the following str
 ]
 
 Here is the resume text:
-\"\"\"
+"""
 {resume_text}
-\"\"\"
+"""
 Return only the JSON, nothing else.
 """
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-3.5-turbo-0125",
             messages=[{"role": "user", "content": prompt}],
             temperature=0
         )
         content = response.choices[0].message.content.strip()
-        print("🧠 GPT raw experience:\n", content)
+        print("\U0001f9e0 GPT raw experience:\n", content)
         return json.loads(content)
     except Exception as e:
-        print(f"⚠️ AI experience parsing failed: {e}")
+        print(f"\u26a0\ufe0f AI experience parsing failed: {e}")
+        print("\u26a0\ufe0f Fallback return triggered: no experience extracted")
         return []
-
 
 def extract_education(text: str) -> list:
     lines = text.split('\n')
@@ -124,7 +119,7 @@ def extract_education(text: str) -> list:
                 school = lines[i - 1].strip() if i > 0 else ''
                 degree_line = line
 
-                print(f"🧪 Raw pair → school: '{school}' | degree line: '{degree_line}'")
+                print(f"\U0001f9ea Raw pair → school: '{school}' | degree line: '{degree_line}'")
 
                 parts = [p.strip() for p in degree_line.split(',', maxsplit=1)]
                 degree_type = parts[0] if parts else ''
@@ -138,7 +133,6 @@ def extract_education(text: str) -> list:
 
     return education
 
-
 def extract_skills(text: str) -> list:
     common_skills = [
         "Python", "JavaScript", "Marketing", "Leadership",
@@ -147,13 +141,11 @@ def extract_skills(text: str) -> list:
     found = [skill for skill in common_skills if skill.lower() in text.lower()]
     return sorted(set(found))
 
-
 def compare_with_job_description(resume_text: str, jd_text: str) -> float:
     vectorizer = TfidfVectorizer(stop_words='english')
     vectors = vectorizer.fit_transform([resume_text, jd_text])
     similarity = cosine_similarity(vectors[0:1], vectors[1:2])
     return similarity[0][0]
-
 
 @app.post("/parse")
 async def parse(
@@ -175,7 +167,7 @@ async def parse(
         "name": extract_name(resume_text),
         "email": extract_email(resume_text),
         "phone": extract_phone(resume_text),
-        "experience": extract_experience_sections(resume_text),  # fallback built-in
+        "experience": extract_experience_sections(resume_text),
         "education": extract_education(resume_text),
         "skills": extract_skills(resume_text)
     }
