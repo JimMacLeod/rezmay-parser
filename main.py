@@ -94,3 +94,16 @@ async def upload_resume(resume: UploadFile = File(...)):
     data   = parse_resume(text)
 
     return JSONResponse(content=data)
+
+from fastapi import FastAPI, File, UploadFile
+
+app = FastAPI()
+
+@app.get("/")
+def health_check():
+    return {"status": "ok"}
+
+@app.post("/upload")
+async def upload_resume(resume: UploadFile = File(...)):
+    content = await resume.read()
+    return {"filename": resume.filename, "size": len(content)}
