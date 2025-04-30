@@ -109,27 +109,34 @@ def extract_education(text: str) -> list:
     education = []
     in_education = False
 
-    degree_keywords = re.compile(r'\b(Bachelor|Master|BS|MS|MBA|PhD|Certificate|Associate)\b', re.IGNORECASE)
+    degree_keywords = re.compile(
+        r'\b(Bachelor|Master|BS|MS|MBA|PhD|Certificate|Associate)\b',
+        re.IGNORECASE
+    )
 
     for i, line in enumerate(lines):
         line = line.strip()
 
-        # Enter education section
         if not in_education and 'education' in line.lower():
             in_education = True
             continue
 
         if in_education:
             if degree_keywords.search(line):
-                degree = line
-                school = lines[i - 1].strip() if i > 0 else ''
-                if school and degree:
-                    education.append({
-                        "school": school,
-                        "degree": degree
-                    })
+                degree_line = line
+                school_line = lines[i - 1].strip() if i > 0 else ''
 
-            # Stop parsing when hitting a likely new section
+                # Try splitting degree from field of study
+                degree_parts = [p.strip() for p in re.split(r',|–|-', degree_line, maxsplit=1)]
+                degree_type = degree_parts[0]
+                field = degree_parts[1] if len(degree_parts) > 1 else ""
+
+                education.append({
+                    "school": school_line,
+                    "degree_type": degree_type,
+                    "field": field
+                })
+
             if line == '' or re.match(r'^(experience|skills|summary)', line, re.IGNORECASE):
                 break
 
