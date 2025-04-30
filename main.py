@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,7 +8,10 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import fitz  # PyMuPDF
 import docx2txt
+import openai
 
+# Set up OpenAI API key from environment
+openai.api_key = os.getenv("OPENAI_API_KEY")  # ✅ Secure
 app = FastAPI()
 
 # Enable CORS for your frontend domain
@@ -52,51 +56,50 @@ def extract_phone(text: str) -> str:
     return match.group(0) if match else ""
 
 
-def extract_experience_sections(text: str) -> list:
-    experience_entries = []
-    lines = text.split('\n')
+def generate_experience_extraction_prompt(resume_text: str) -> str:
+    prompt = f"""
+You are a resume parser. Extract ONLY what is explicitly stated in the following resume text.
+Do not guess, infer, or add any information. If a field is missing, leave it blank or omit it.
+Return a list of experience entries in strict JSON format with the following structure:
 
-    current = None
-    bullets = []
+[
+  {{
+    "title": "Job title",
+    "company": "Company name",
+    "location": "City, State or Remote",
+    "years": "Start – End",
+    "bullets": [
+      "Responsibility or achievement 1",
+      "Responsibility or achievement 2"
+    ]
+  }},
+  ...
+]
 
-    for line in lines:
-        line = line.strip()
+Here is the resume text:
+\"\"\"
+{resume_text}
+\"\"\"
+Return only the JSON, nothing else.
+"""
+    return prompt.strip()
 
-        # Match a new role entry
-        title_match = re.search(
-            r'(?P<title>.*?(Manager|Director|VP|Engineer|Designer|Marketing|Developer|Lead).*?)'
-            r'( at (?P<company>.*?))?'
-            r'( \((?P<years>[^)]+)\))?$',
-            line,
-            re.IGNORECASE
+
+def extract_experience_sections(resume_text: str) -> list:
+    prompt = generate_experience_extraction_prompt(resume_text)
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
         )
-
-        # If the line looks like a bullet or continuation
-        is_bullet = line.startswith(('•', '-', '*')) or (current and not title_match)
-
-        if title_match and title_match.group('title'):
-            # Save the previous entry
-            if current:
-                current['bullets'] = bullets
-                experience_entries.append(current)
-                bullets = []
-
-            current = {
-                "title": title_match.group('title').strip(),
-                "company": title_match.group('company') or "",
-                "years": title_match.group('years') or ""
-            }
-
-        elif is_bullet and current:
-            clean_line = line.lstrip('•-* ').strip()
-            if clean_line:
-                bullets.append(clean_line)
-
-    if current:
-        current['bullets'] = bullets
-        experience_entries.append(current)
-
-    return experience_entries
+        content = response['choices'][0]['message']['content'].strip()
+        parsed = json.loads(content)
+        return parsed if isinstance(parsed, list) else []
+    except Exception as e:
+        print(f"AI experience parsing failed: {e}")
+        return []
 
 
 def extract_education(text: str) -> list:
