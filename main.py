@@ -15,10 +15,10 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = FastAPI()
 
-# CORS for WordPress frontend
+# Enable CORS for your frontend domain
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://rezmay.co"],
+    allow_origins=["https://rezmay.co"],  # Update if needed
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -96,7 +96,7 @@ def extract_experience_sections(resume_text: str) -> list:
             temperature=0
         )
         content = response['choices'][0]['message']['content'].strip()
-        print("GPT raw response:\n", content)  # Debug log
+        print("GPT raw response:\n", content)  # Logging for debug
         parsed = json.loads(content)
         return parsed if isinstance(parsed, list) else []
     except Exception as e:
@@ -106,29 +106,34 @@ def extract_experience_sections(resume_text: str) -> list:
 
 def extract_education(text: str) -> list:
     lines = text.split('\n')
-    degrees = []
+    education = []
+    in_education = False
 
-    degree_patterns = [
-        r"\b(BA|B\.A\.|BS|B\.S\.|Bachelor'?s|Bachelors)\b",
-        r"\b(MA|M\.A\.|MS|M\.S\.|Master'?s|Masters)\b",
-        r"\b(MBA|PhD|Ph\.D\.|Doctorate|Associate)\b"
-    ]
+    degree_keywords = re.compile(r'\b(Bachelor|Master|BS|MS|MBA|PhD|Certificate|Associate)\b', re.IGNORECASE)
 
-    pattern = re.compile('|'.join(degree_patterns), re.IGNORECASE)
+    for i, line in enumerate(lines):
+        line = line.strip()
 
-    for line in lines:
-        if pattern.search(line):
-            degrees.append(line.strip())
+        # Enter education section
+        if not in_education and 'education' in line.lower():
+            in_education = True
+            continue
 
-    seen = set()
-    unique = []
-    for d in degrees:
-        normalized = d.lower()
-        if normalized not in seen:
-            seen.add(normalized)
-            unique.append({"degree": d, "school": ""})
+        if in_education:
+            if degree_keywords.search(line):
+                degree = line
+                school = lines[i - 1].strip() if i > 0 else ''
+                if school and degree:
+                    education.append({
+                        "school": school,
+                        "degree": degree
+                    })
 
-    return unique
+            # Stop parsing when hitting a likely new section
+            if line == '' or re.match(r'^(experience|skills|summary)', line, re.IGNORECASE):
+                break
+
+    return education
 
 
 def extract_skills(text: str) -> list:
