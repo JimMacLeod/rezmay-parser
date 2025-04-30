@@ -1,3 +1,4 @@
+# Redeploy: fallback experience extraction active
 import os
 import re
 import json
