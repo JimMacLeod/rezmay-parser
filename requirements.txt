@@ -1,7 +1,7 @@
-fastapi==0.111.0
-uvicorn==0.29.0
-python-multipart==0.0.7
+fastapi
+uvicorn[standard]
+python-multipart
 PyMuPDF==1.25.5
-docx2txt==0.8
-scikit-learn==1.4.2
-openai>=1.0.0
+docx2txt
+scikit-learn
+openai
