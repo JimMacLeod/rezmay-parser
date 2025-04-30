@@ -1,4 +1,3 @@
-# Redeploy: fallback experience extraction active
 import os
 import re
 import json
@@ -11,19 +10,20 @@ import fitz  # PyMuPDF
 import docx2txt
 import openai
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://rezmay.co"],
+    allow_origins=["https://rezmay.co", "https://www.rezmay.co"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 AUTH = os.getenv("BASIC_AUTH_TOKEN", "")
+
 
 def extract_text_from_file(filename: str, content: bytes) -> str:
     ext = filename.lower().split('.')[-1]
@@ -39,17 +39,21 @@ def extract_text_from_file(filename: str, content: bytes) -> str:
     else:
         raise ValueError("Unsupported file type")
 
+
 def extract_name(text: str) -> str:
     lines = text.strip().split("\n")
     return lines[0].strip() if lines else ""
+
 
 def extract_email(text: str) -> str:
     match = re.search(r'[\w\.-]+@[\w\.-]+', text)
     return match.group(0) if match else ""
 
+
 def extract_phone(text: str) -> str:
     match = re.search(r'(\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}', text)
     return match.group(0) if match else ""
+
 
 def extract_experience_sections(resume_text: str) -> list:
     print("🔁 Running extract_experience_sections")
@@ -81,7 +85,7 @@ Return only the JSON, nothing else.
 """
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo-0125",
             messages=[{"role": "user", "content": prompt}],
             temperature=0
@@ -92,6 +96,7 @@ Return only the JSON, nothing else.
     except Exception as e:
         print(f"⚠️ AI experience parsing failed: {e}")
         return []
+
 
 def extract_education(text: str) -> list:
     lines = text.split('\n')
@@ -132,6 +137,7 @@ def extract_education(text: str) -> list:
 
     return education
 
+
 def extract_skills(text: str) -> list:
     common_skills = [
         "Python", "JavaScript", "Marketing", "Leadership",
@@ -140,11 +146,13 @@ def extract_skills(text: str) -> list:
     found = [skill for skill in common_skills if skill.lower() in text.lower()]
     return sorted(set(found))
 
+
 def compare_with_job_description(resume_text: str, jd_text: str) -> float:
     vectorizer = TfidfVectorizer(stop_words='english')
     vectors = vectorizer.fit_transform([resume_text, jd_text])
     similarity = cosine_similarity(vectors[0:1], vectors[1:2])
     return similarity[0][0]
+
 
 @app.post("/parse")
 async def parse(
