@@ -17,7 +17,7 @@ app.add_middleware(
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
 )
 
-# ────────── file helpers ──────────
+# ────────── file helpers 2 ──────────
 def extract_text_from_file(fname: str, blob: bytes) -> str:
     ext = fname.lower().split(".")[-1]
     tmp = f"/tmp/temp.{ext}"
