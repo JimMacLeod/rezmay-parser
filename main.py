@@ -2,16 +2,18 @@ import os
 import re
 from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from fastapi.middleware.cors import CORSMiddleware
 import fitz  # PyMuPDF
 import docx2txt
 
 app = FastAPI()
+
+# Enable CORS for your frontend domain
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://rezmay.co"],  # ✅ Your real frontend domain
+    allow_origins=["https://rezmay.co"],  # Replace with your live WP domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -53,26 +55,42 @@ def extract_phone(text: str) -> str:
 def extract_experience_sections(text: str) -> list:
     experience_entries = []
     lines = text.split('\n')
-    current = {}
+
+    current = None
     bullets = []
 
     for line in lines:
         line = line.strip()
 
-        if re.match(r'.*\b(Manager|Director|VP|Engineer|Designer|Marketing|Developer|Lead)\b.*', line, re.IGNORECASE):
+        # Match a new role entry
+        title_match = re.search(
+            r'(?P<title>.*?(Manager|Director|VP|Engineer|Designer|Marketing|Developer|Lead).*?)'
+            r'( at (?P<company>.*?))?'
+            r'( \((?P<years>[^)]+)\))?$',
+            line,
+            re.IGNORECASE
+        )
+
+        # If the line looks like a bullet or continuation
+        is_bullet = line.startswith(('•', '-', '*')) or (current and not title_match)
+
+        if title_match and title_match.group('title'):
+            # Save the previous entry
             if current:
                 current['bullets'] = bullets
                 experience_entries.append(current)
                 bullets = []
 
             current = {
-                "title": line,
-                "company": "",  # optional refinement
-                "years": "",    # optional refinement
+                "title": title_match.group('title').strip(),
+                "company": title_match.group('company') or "",
+                "years": title_match.group('years') or ""
             }
 
-        elif line.startswith(('•', '-', '*')):
-            bullets.append(line.lstrip('•-* ').strip())
+        elif is_bullet and current:
+            clean_line = line.lstrip('•-* ').strip()
+            if clean_line:
+                bullets.append(clean_line)
 
     if current:
         current['bullets'] = bullets
@@ -112,7 +130,7 @@ async def parse(
     try:
         resume_text = extract_text_from_file(file.filename, content)
     except Exception as e:
-        print(f"Error while extracting text: {e}")  # ✅ This logs the real crash
+        print(f"Error while extracting text: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
     data = {
