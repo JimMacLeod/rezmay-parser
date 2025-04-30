@@ -33,5 +33,5 @@ COPY . .
 ENV PORT=8000
 EXPOSE ${PORT}
 
-# If your entry-point file is main.py and the FastAPI/Starlette app is named “app”
+# If your entry-point file is main.py and the FastAPI/Starlette app is usually named “app”
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
