@@ -10,15 +10,13 @@ import fitz  # PyMuPDF
 import docx2txt
 import openai
 
-# OpenAI API key from environment
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = FastAPI()
 
-# Enable CORS for your frontend domain
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://rezmay.co"],  # Update if needed
+    allow_origins=["https://rezmay.co"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -96,7 +94,7 @@ def extract_experience_sections(resume_text: str) -> list:
             temperature=0
         )
         content = response['choices'][0]['message']['content'].strip()
-        print("GPT raw response:\n", content)  # Logging for debug
+        print("GPT raw response:\n", content)
         parsed = json.loads(content)
         return parsed if isinstance(parsed, list) else []
     except Exception as e:
@@ -123,19 +121,23 @@ def extract_education(text: str) -> list:
 
         if in_education:
             if degree_keywords.search(line):
-                degree_line = line
-                school_line = lines[i - 1].strip() if i > 0 else ''
+                parts = [p.strip() for p in line.split(',')]
+                degree_type = None
+                field = ""
+                school = lines[i - 1].strip() if i > 0 else ""
 
-                # Try splitting degree from field of study
-                degree_parts = [p.strip() for p in re.split(r',|–|-', degree_line, maxsplit=1)]
-                degree_type = degree_parts[0]
-                field = degree_parts[1] if len(degree_parts) > 1 else ""
+                for part in parts:
+                    if degree_keywords.match(part):
+                        degree_type = part
+                    elif not field:
+                        field = part
 
-                education.append({
-                    "school": school_line,
-                    "degree_type": degree_type,
-                    "field": field
-                })
+                if degree_type and school:
+                    education.append({
+                        "school": school,
+                        "degree_type": degree_type,
+                        "field": field
+                    })
 
             if line == '' or re.match(r'^(experience|skills|summary)', line, re.IGNORECASE):
                 break
