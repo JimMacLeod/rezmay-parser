@@ -104,6 +104,7 @@ async def parse(
     try:
         resume_text = extract_text_from_file(file.filename, content)
     except Exception as e:
+        print(f"Error while extracting text: {e}")  # ✅ This logs the real crash
         raise HTTPException(status_code=400, detail=str(e))
 
     data = {
