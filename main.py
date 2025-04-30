@@ -4,10 +4,18 @@ from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from fastapi.middleware.cors import CORSMiddleware
 import fitz  # PyMuPDF
 import docx2txt
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://rezmay.co"],  # ✅ Your real frontend domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 AUTH = os.getenv("BASIC_AUTH_TOKEN", "")
 
