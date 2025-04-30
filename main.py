@@ -121,13 +121,15 @@ def extract_education(text: str) -> list:
 
         if in_education:
             if re.match(r'^\s*(experience|skills|summary)', line, re.IGNORECASE):
-                break  # Stop at next section
+                break
 
             if degree_keywords.search(line):
-                degree_line = line
                 school = lines[i - 1].strip() if i > 0 else ''
+                degree_line = line
 
-                # Simple stable split: "BS, Graphic Design"
+                # Log what we're seeing
+                print(f"🧪 Raw pair → school: '{school}' | degree line: '{degree_line}'")
+
                 parts = [p.strip() for p in degree_line.split(',', maxsplit=1)]
                 degree_type = parts[0] if parts else ''
                 field = parts[1] if len(parts) > 1 else ''
