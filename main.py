@@ -11,7 +11,7 @@ import fitz  # PyMuPDF
 import docx2txt
 import openai
 
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = FastAPI()
 
@@ -52,7 +52,7 @@ def extract_phone(text: str) -> str:
     return match.group(0) if match else ""
 
 def extract_experience_sections(resume_text: str) -> list:
-    print("\U0001f501 Running extract_experience_sections")
+    print("🔁 Running extract_experience_sections")
 
     prompt = f"""
 You are a resume parser. Extract ONLY what is explicitly stated in the following resume text.
@@ -81,17 +81,16 @@ Return only the JSON, nothing else.
 """
 
     try:
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo-0125",
             messages=[{"role": "user", "content": prompt}],
             temperature=0
         )
         content = response.choices[0].message.content.strip()
-        print("\U0001f9e0 GPT raw experience:\n", content)
+        print("🧠 GPT raw experience:\n", content)
         return json.loads(content)
     except Exception as e:
-        print(f"\u26a0\ufe0f AI experience parsing failed: {e}")
-        print("\u26a0\ufe0f Fallback return triggered: no experience extracted")
+        print(f"⚠️ AI experience parsing failed: {e}")
         return []
 
 def extract_education(text: str) -> list:
@@ -119,7 +118,7 @@ def extract_education(text: str) -> list:
                 school = lines[i - 1].strip() if i > 0 else ''
                 degree_line = line
 
-                print(f"\U0001f9ea Raw pair → school: '{school}' | degree line: '{degree_line}'")
+                print(f"🧪 Raw pair → school: '{school}' | degree line: '{degree_line}'")
 
                 parts = [p.strip() for p in degree_line.split(',', maxsplit=1)]
                 degree_type = parts[0] if parts else ''
