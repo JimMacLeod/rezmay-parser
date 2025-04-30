@@ -120,6 +120,9 @@ def extract_education(text: str) -> list:
             continue
 
         if in_education:
+            if re.match(r'^\s*(experience|skills|summary)', line, re.IGNORECASE):
+                break  # Stop at next section header
+
             if degree_keywords.search(line):
                 parts = [p.strip() for p in line.split(',')]
                 degree_type = None
@@ -127,7 +130,7 @@ def extract_education(text: str) -> list:
                 school = lines[i - 1].strip() if i > 0 else ""
 
                 for part in parts:
-                    if degree_keywords.match(part):
+                    if degree_keywords.search(part):
                         degree_type = part
                     elif not field:
                         field = part
@@ -138,9 +141,6 @@ def extract_education(text: str) -> list:
                         "degree_type": degree_type,
                         "field": field
                     })
-
-            if line == '' or re.match(r'^(experience|skills|summary)', line, re.IGNORECASE):
-                break
 
     return education
 
