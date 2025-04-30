@@ -1,3 +1,5 @@
+# main.py
+
 from fastapi import FastAPI, File, UploadFile
 
 app = FastAPI()
@@ -14,3 +16,5 @@ async def upload_resume(resume: UploadFile = File(...)):
         "size": len(content),
         "content_type": resume.content_type
     }
+
+# Trigger redeploy: dummy comment
