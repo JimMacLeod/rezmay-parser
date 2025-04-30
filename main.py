@@ -56,6 +56,8 @@ def extract_phone(text: str) -> str:
 
 
 def extract_experience_sections(resume_text: str) -> list:
+    print("🔁 Running extract_experience_sections")  # Debug: confirming this runs
+
     prompt = f"""
 You are a resume parser. Extract ONLY what is explicitly stated in the following resume text.
 Do not guess, infer, or add any information. If a field is missing, leave it blank or omit it.
