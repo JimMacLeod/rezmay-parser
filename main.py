@@ -10,14 +10,15 @@ import fitz  # PyMuPDF
 import docx2txt
 import openai
 
-# Set up OpenAI API key from environment
-openai.api_key = os.getenv("OPENAI_API_KEY")  # ✅ Secure
+# OpenAI API key from environment
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
 app = FastAPI()
 
-# Enable CORS for your frontend domain
+# CORS for WordPress frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://rezmay.co"],  # Replace with your live WP domain
+    allow_origins=["https://rezmay.co"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -95,6 +96,7 @@ def extract_experience_sections(resume_text: str) -> list:
             temperature=0
         )
         content = response['choices'][0]['message']['content'].strip()
+        print("GPT raw response:\n", content)  # Debug log
         parsed = json.loads(content)
         return parsed if isinstance(parsed, list) else []
     except Exception as e:
@@ -103,12 +105,37 @@ def extract_experience_sections(resume_text: str) -> list:
 
 
 def extract_education(text: str) -> list:
-    matches = re.findall(r'(BA|BS|MA|MBA|PhD|Associate)[^,\n]*,? ?[^,\n]+', text, re.IGNORECASE)
-    return [{"degree": match, "school": ""} for match in matches]
+    lines = text.split('\n')
+    degrees = []
+
+    degree_patterns = [
+        r"\b(BA|B\.A\.|BS|B\.S\.|Bachelor'?s|Bachelors)\b",
+        r"\b(MA|M\.A\.|MS|M\.S\.|Master'?s|Masters)\b",
+        r"\b(MBA|PhD|Ph\.D\.|Doctorate|Associate)\b"
+    ]
+
+    pattern = re.compile('|'.join(degree_patterns), re.IGNORECASE)
+
+    for line in lines:
+        if pattern.search(line):
+            degrees.append(line.strip())
+
+    seen = set()
+    unique = []
+    for d in degrees:
+        normalized = d.lower()
+        if normalized not in seen:
+            seen.add(normalized)
+            unique.append({"degree": d, "school": ""})
+
+    return unique
 
 
 def extract_skills(text: str) -> list:
-    common_skills = ["Python", "JavaScript", "Marketing", "Leadership", "Design", "Copywriting", "UX", "Analytics"]
+    common_skills = [
+        "Python", "JavaScript", "Marketing", "Leadership",
+        "Design", "Copywriting", "UX", "Analytics"
+    ]
     found = [skill for skill in common_skills if skill.lower() in text.lower()]
     return sorted(set(found))
 
