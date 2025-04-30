@@ -1,4 +1,3 @@
-# Trigger redeploy: updated debug logging
 import os
 import re
 import json
@@ -57,7 +56,7 @@ def extract_phone(text: str) -> str:
 
 
 def extract_experience_sections(resume_text: str) -> list:
-    print("🔁 Running extract_experience_sections")  # Debug: confirming this runs
+    print("🔁 Running extract_experience_sections")
 
     prompt = f"""
 You are a resume parser. Extract ONLY what is explicitly stated in the following resume text.
@@ -95,7 +94,7 @@ Return only the JSON, nothing else.
         print("🧠 GPT raw experience:\n", content)
         return json.loads(content)
     except Exception as e:
-        print(f"AI experience parsing failed: {e}")
+        print(f"⚠️ AI experience parsing failed: {e}")
         return []
 
 
@@ -175,7 +174,7 @@ async def parse(
         "name": extract_name(resume_text),
         "email": extract_email(resume_text),
         "phone": extract_phone(resume_text),
-        "experience": extract_experience_sections(resume_text),
+        "experience": extract_experience_sections(resume_text),  # fallback built-in
         "education": extract_education(resume_text),
         "skills": extract_skills(resume_text)
     }
