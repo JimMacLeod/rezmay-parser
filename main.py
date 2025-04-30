@@ -16,7 +16,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://rezmay.co", "https://www.rezmay.co"],
+    allow_origins=["*"],  # TEMP: allow all origins to bypass CORS for testing
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,34 +59,12 @@ def extract_experience_sections(resume_text: str) -> list:
     print("🔁 Running extract_experience_sections")
 
     prompt = f"""
-You are a resume parser. Extract ONLY what is explicitly stated in the following resume text.
-Do not guess, infer, or add any information. If a field is missing, leave it blank or omit it.
-Return a list of experience entries in strict JSON format with the following structure:
-
-[
-  {{
-    "title": "Job title",
-    "company": "Company name",
-    "location": "City, State or Remote",
-    "years": "Start – End",
-    "bullets": [
-      "Responsibility or achievement 1",
-      "Responsibility or achievement 2"
-    ]
-  }},
-  ...
-]
-
-Here is the resume text:
-"""
-{resume_text}
-"""
-Return only the JSON, nothing else.
-"""
+    You are a resume parser...
+    """
 
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo-0125",
+            model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             temperature=0
         )
