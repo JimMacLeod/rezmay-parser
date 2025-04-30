@@ -1,22 +1,22 @@
 from fastapi import FastAPI, UploadFile, File
-import shutil
 
 app = FastAPI()
 
 @app.get("/")
 def root():
-    return {"message": "upload test"}
+    return {"message": "ready for in-memory upload"}
 
 @app.post("/upload")
 async def upload_resume(resume: UploadFile = File(...)):
     try:
-        file_location = f"/tmp/{resume.filename}"
-        with open(file_location, "wb") as buffer:
-            shutil.copyfileobj(resume.file, buffer)
+        filename = resume.filename
+        content_type = resume.content_type
+        # just read a few bytes to avoid crashing
+        preview = await resume.read(100)
         return {
-            "filename": resume.filename,
-            "saved_to": file_location,
-            "content_type": resume.content_type
+            "filename": filename,
+            "content_type": content_type,
+            "preview": preview.decode(errors="ignore")
         }
     except Exception as e:
         return {"error": str(e)}
