@@ -1,136 +1,114 @@
-import os
-import re
-import json
+import os, re, io, json
 from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import fitz  # PyMuPDF
+import fitz           # PyMuPDF
 import docx2txt
 import openai
 
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# ────────────────────────────────
+# Config
+# ────────────────────────────────
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+AUTH       = os.getenv("BASIC_AUTH_TOKEN", "")
 
-app = FastAPI()
+client = openai.OpenAI(api_key=OPENAI_KEY)
+
+app = FastAPI(title="Rezmay Parser API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TEMP: allow all origins to bypass CORS for testing
+    allow_origins=["https://rezmay.co"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-AUTH = os.getenv("BASIC_AUTH_TOKEN", "")
+# ────────────────────────────────
+# Utility functions
+# ────────────────────────────────
+EMAIL_RE  = re.compile(r'[\w\.-]+@[\w\.-]+')
+PHONE_RE  = re.compile(r'(\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}')
 
+def extract_text(filename: str, data: bytes) -> str:
+    ext = filename.rsplit('.', 1)[-1].lower()
+    if ext == "pdf":
+        with fitz.open(stream=data, filetype="pdf") as pdf:
+            return "\n".join(p.get_text() for p in pdf)
+    elif ext == "docx":
+        tmp = "/tmp/upload.docx"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        return docx2txt.process(tmp) or ""
+    raise ValueError("Unsupported file type")
 
-def extract_text_from_file(filename: str, content: bytes) -> str:
-    ext = filename.lower().split('.')[-1]
-    if ext == 'pdf':
-        with open("/tmp/temp.pdf", "wb") as f:
-            f.write(content)
-        doc = fitz.open("/tmp/temp.pdf")
-        return "\n".join(page.get_text() for page in doc)
-    elif ext == 'docx':
-        with open("/tmp/temp.docx", "wb") as f:
-            f.write(content)
-        return docx2txt.process("/tmp/temp.docx")
-    else:
-        raise ValueError("Unsupported file type")
+def extract_basic_fields(text: str) -> dict:
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    joined = "\n".join(lines)
+    return {
+        "name" : lines[0] if lines else "",
+        "email": EMAIL_RE.search(joined).group(0) if EMAIL_RE.search(joined) else "",
+        "phone": PHONE_RE.search(joined).group(0) if PHONE_RE.search(joined) else ""
+    }
 
-
-def extract_name(text: str) -> str:
-    lines = text.strip().split("\n")
-    return lines[0].strip() if lines else ""
-
-
-def extract_email(text: str) -> str:
-    match = re.search(r'[\w\.-]+@[\w\.-]+', text)
-    return match.group(0) if match else ""
-
-
-def extract_phone(text: str) -> str:
-    match = re.search(r'(\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}', text)
-    return match.group(0) if match else ""
-
-
-def extract_experience_sections(resume_text: str) -> list:
-    print("🔁 Running extract_experience_sections")
-
+def ai_extract_experience(text: str) -> list:
     prompt = f"""
-    You are a resume parser...
-    """
+You are a strict JSON resume parser. Extract each job with fields:
+"title", "company", "location", "years". No guessing.
 
+Return:
+[
+  {{"title":"...","company":"...","location":"...","years":"..."}},
+  ...
+]
+
+Resume text:
+\"\"\"{text}\"\"\"
+Return only JSON.
+"""
     try:
-        response = client.chat.completions.create(
+        res = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role":"user","content":prompt}],
             temperature=0
         )
-        content = response.choices[0].message.content.strip()
-        print("🧠 GPT raw experience:\n", content)
-        return json.loads(content)
+        return json.loads(res.choices[0].message.content)
     except Exception as e:
-        print(f"⚠️ AI experience parsing failed: {e}")
+        print("AI experience parse failed:", e)
         return []
 
-
 def extract_education(text: str) -> list:
-    lines = text.split('\n')
-    education = []
-    in_education = False
-
-    degree_keywords = re.compile(
-        r'\b(Bachelor|Master|BS|MS|MBA|PhD|Certificate|Associate)\b',
-        re.IGNORECASE
-    )
-
-    for i, line in enumerate(lines):
-        line = line.strip()
-
-        if not in_education and 'education' in line.lower():
-            in_education = True
-            continue
-
-        if in_education:
-            if re.match(r'^\s*(experience|skills|summary)', line, re.IGNORECASE):
+    degree_kw = re.compile(r'\b(Bachelor|Master|BS|MS|MBA|PhD|Certificate|Associate)\b', re.I)
+    edu, capture = [], False
+    for line in text.splitlines():
+        l = line.strip()
+        if 'education' in l.lower():
+            capture = True; continue
+        if capture:
+            if degree_kw.search(l):
+                edu.append(l)
+            elif l.lower().startswith(('experience','skills','summary')):
                 break
-
-            if degree_keywords.search(line):
-                school = lines[i - 1].strip() if i > 0 else ''
-                degree_line = line
-
-                print(f"🧪 Raw pair → school: '{school}' | degree line: '{degree_line}'")
-
-                parts = [p.strip() for p in degree_line.split(',', maxsplit=1)]
-                degree_type = parts[0] if parts else ''
-                field = parts[1] if len(parts) > 1 else ''
-
-                education.append({
-                    "school": school,
-                    "degree_type": degree_type,
-                    "field": field
-                })
-
-    return education
-
+    return edu
 
 def extract_skills(text: str) -> list:
-    common_skills = [
-        "Python", "JavaScript", "Marketing", "Leadership",
-        "Design", "Copywriting", "UX", "Analytics"
-    ]
-    found = [skill for skill in common_skills if skill.lower() in text.lower()]
-    return sorted(set(found))
+    keywords = {"Marketing","Design","SEO","Analytics","Content","Leadership",
+                "Python","Java","HTML","CSS","WordPress","Copywriting"}
+    return sorted({k for k in keywords if k.lower() in text.lower()})
 
+def jd_similarity(resume: str, jd: str) -> float:
+    vect = TfidfVectorizer(stop_words='english').fit_transform([resume, jd])
+    return cosine_similarity(vect[0:1], vect[1:2])[0][0]
 
-def compare_with_job_description(resume_text: str, jd_text: str) -> float:
-    vectorizer = TfidfVectorizer(stop_words='english')
-    vectors = vectorizer.fit_transform([resume_text, jd_text])
-    similarity = cosine_similarity(vectors[0:1], vectors[1:2])
-    return similarity[0][0]
-
+# ────────────────────────────────
+# Routes
+# ────────────────────────────────
+@app.get("/")
+def health():
+    return {"message": "It works!"}
 
 @app.post("/parse")
 async def parse(
@@ -139,26 +117,21 @@ async def parse(
     authorization: Optional[str] = Header(None)
 ):
     if AUTH and authorization != f"Bearer {AUTH}":
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        raise HTTPException(401, "Unauthorized")
 
-    content = await file.read()
+    data = await file.read()
     try:
-        resume_text = extract_text_from_file(file.filename, content)
+        text = extract_text(file.filename, data)
     except Exception as e:
-        print(f"Error while extracting text: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(400, str(e))
 
-    data = {
-        "name": extract_name(resume_text),
-        "email": extract_email(resume_text),
-        "phone": extract_phone(resume_text),
-        "experience": extract_experience_sections(resume_text),
-        "education": extract_education(resume_text),
-        "skills": extract_skills(resume_text)
-    }
+    result = extract_basic_fields(text)
+    result["experience"] = ai_extract_experience(text)
+    result["education"]  = extract_education(text)
+    result["skills"]     = extract_skills(text)
 
     if job_description:
-        score = compare_with_job_description(resume_text, job_description)
-        data["match_score"] = round(score * 100, 2)
+        match = jd_similarity(text, job_description)
+        result["match_score"] = round(match * 100, 2)
 
-    return data
+    return JSONResponse(result)
