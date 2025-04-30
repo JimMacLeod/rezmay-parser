@@ -9,10 +9,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 # ────────────────────────────
-# 2. Install system deps
+# 2. Install minimal build tools (avoid OOM on Railway)
 # ────────────────────────────
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential gcc curl unzip \
+ && apt-get install -y --no-install-recommends build-essential gcc \
  && rm -rf /var/lib/apt/lists/*
 
 # ────────────────────────────
