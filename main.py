@@ -1,6 +1,6 @@
 """
-Rezmay résumé parser – v1.0
-Stable base: GPT-extracts experience, regex-gets contact/edu/skills, JD scoring.
+Rezmay résumé parser – v1.1
+GPT-powered experience parsing, PDF-safe, chunked debug logging, regex extras.
 """
 
 import os, re, json, textwrap, docx2txt
@@ -27,7 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ────────────────  RESPONSE MODEL s  ────────────────
+# ────────────────  RESPONSE MODEL  ────────────────
 class ExpItem(BaseModel):
     title: str = ""
     company: str = ""
@@ -109,9 +109,17 @@ def refine_header(item:dict):
     return item
 
 def extract_exp(full:str)->List[dict]:
-    chunks=textwrap.wrap(full, 2500, break_long_words=False)
-    items=[]
-    for c in chunks: items += gpt_exp(c)
+    chunks = textwrap.wrap(full, 2500, break_long_words=False)
+    items = []
+    for i, c in enumerate(chunks):
+        try:
+            print(f"Chunk {i+1}/{len(chunks)}")
+            parsed = gpt_exp(c)
+            print(f"→ Parsed {len(parsed)} items")
+            items += parsed
+        except Exception as e:
+            print(f"GPT fail on chunk {i+1}: {e}")
+
     seen, out = set(), []
     for it in items:
         it = refine_header(it)
