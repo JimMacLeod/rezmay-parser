@@ -5,3 +5,4 @@ pypdf
 python-docx
 scikit-learn
 openai
+PyMuPDF==1.25.5
