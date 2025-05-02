@@ -39,7 +39,7 @@ def extract_experience(text: str) -> List[dict]:
         if not line:
             continue
 
-        if re.search(r'\bexperience\b', line.lower()):
+        if re.search(r'experience', line.lower()):
             in_experience = True
             continue
 
