@@ -9,7 +9,7 @@ from docx import Document
 
 app = FastAPI()
 
-# Allow requests from rezmay.co
+# CORS: allow frontend domain
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://rezmay.co"],
@@ -39,11 +39,13 @@ def extract_experience(text: str) -> List[dict]:
         if not line:
             continue
 
+        # More flexible match to trigger experience section
         if re.search(r'experience', line.lower()):
             in_experience = True
             continue
 
         if in_experience:
+            # Try to detect job title, company, location, and dates
             job_match = re.match(r'^(.+?)\s+[,–-]\s+(.+?)\s+\((\d{2}/\d{2})\s*[-–]\s*(\d{2}/\d{2}|present)\)', line)
             if job_match:
                 if current:
@@ -57,9 +59,11 @@ def extract_experience(text: str) -> List[dict]:
                 }
                 continue
 
+            # Bullet points
             if current and line.startswith(("•", "-", "◦")):
                 current["bullets"].append(line.lstrip("•-◦ ").strip())
 
+            # Exit section if new heading starts
             if re.match(r'^\s*(education|skills|projects|certifications)\b', line.lower()):
                 if current:
                     experience.append(current)
@@ -82,6 +86,11 @@ async def parse(file: UploadFile, authorization: str | None = Header(None)):
         text = extract_text_from_docx(file)
     else:
         raise HTTPException(400, detail="Unsupported file type")
+
+    # DEBUG: print raw text to Railway logs
+    print("\n\n===== RESUME TEXT START =====\n")
+    print(text)
+    print("\n===== RESUME TEXT END =====\n")
 
     experience = extract_experience(text)
 
