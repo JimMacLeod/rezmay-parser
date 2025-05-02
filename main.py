@@ -3,8 +3,9 @@ Rezmay résumé parser – v1.0
 Stable base: GPT-extracts experience, regex-gets contact/edu/skills, JD scoring.
 """
 
-import os, re, json, textwrap, fitz, docx2txt
+import os, re, json, textwrap, docx2txt
 from typing import List, Optional
+from pypdf import PdfReader
 
 import openai
 from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException
@@ -55,7 +56,8 @@ def extract_text(fname: str, data: bytes) -> str:
     with open(path, "wb") as f: f.write(data)
 
     if ext == "pdf":
-        return "\n".join(p.get_text() for p in fitz.open(path))
+        reader = PdfReader(path)
+        return "\n".join(p.extract_text() or "" for p in reader.pages)
     if ext == "docx":
         return docx2txt.process(path)
     raise ValueError("Only PDF/DOCX allowed")
