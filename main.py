@@ -27,7 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ────────────────  RESPONSE MODEL  ────────────────
+# ────────────────  RESPONSE MODEL s  ────────────────
 class ExpItem(BaseModel):
     title: str = ""
     company: str = ""
