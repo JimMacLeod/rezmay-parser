@@ -2,23 +2,22 @@ import os
 import re
 from fastapi import FastAPI, UploadFile, HTTPException, Header
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 from pypdf import PdfReader
 from docx import Document
-from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# Allow frontend domain
+# Allow requests from rezmay.co
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://rezmay.co"],  # or ["*"] for dev
+    allow_origins=["https://rezmay.co"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app = FastAPI()
 AUTH = os.getenv('BASIC_AUTH_TOKEN', '')
 
 def extract_text_from_pdf(file: UploadFile) -> str:
